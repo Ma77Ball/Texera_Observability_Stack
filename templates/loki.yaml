@@ -47,7 +47,12 @@ spec:
           configMap:
             name: {{ .Release.Name }}-loki
         - name: storage
+          {{- if .Values.loki.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-loki-storage
+          {{- else }}
           emptyDir: {}
+          {{- end }}
 ---
 apiVersion: v1
 kind: Service

@@ -27,9 +27,15 @@ spec:
               protocol: TCP
           env:
             - name: GF_SECURITY_ADMIN_USER
-              value: {{ .Values.grafana.adminUser }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ ternary (printf "%s-grafana-secret" .Release.Name) .Values.grafana.existingSecret (empty .Values.grafana.existingSecret) }}
+                  key: {{ .Values.grafana.existingSecretUserKey }}
             - name: GF_SECURITY_ADMIN_PASSWORD
-              value: {{ .Values.grafana.adminPassword }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ ternary (printf "%s-grafana-secret" .Release.Name) .Values.grafana.existingSecret (empty .Values.grafana.existingSecret) }}
+                  key: {{ .Values.grafana.existingSecretPasswordKey }}
           volumeMounts:
             - name: config
               mountPath: /etc/grafana/provisioning/datasources/datasource.yml

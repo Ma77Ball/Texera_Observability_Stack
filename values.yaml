@@ -4,14 +4,25 @@ loki:
     repository: grafana/loki
     tag: 2.9.2
     pullPolicy: IfNotPresent
+  persistence:
+    enabled: false
+    size: 10Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
 
 grafana:
   image:
     repository: grafana/grafana
     tag: 10.2.0
     pullPolicy: IfNotPresent
+  # Credentials for the admin user
+  # If existingSecret is set, these values are ignored and credentials satisfied from the secret
   adminUser: admin
   adminPassword: admin
+  existingSecret: ""
+  existingSecretUserKey: admin-user
+  existingSecretPasswordKey: admin-password
   service:
     nodePort: 30300
 

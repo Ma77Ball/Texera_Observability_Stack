@@ -1,0 +1,18 @@
+{{- if .Values.loki.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-loki-storage
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: loki
+spec:
+  accessModes:
+    {{- toYaml .Values.loki.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.loki.persistence.size | quote }}
+  {{- if .Values.loki.persistence.storageClass }}
+  storageClassName: {{ .Values.loki.persistence.storageClass | quote }}
+  {{- end }}
+{{- end }}
