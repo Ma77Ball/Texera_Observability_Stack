@@ -1,0 +1,22 @@
+# OpenTelemetry Stack Configuration
+loki:
+  image:
+    repository: grafana/loki
+    tag: 2.9.2
+    pullPolicy: IfNotPresent
+
+grafana:
+  image:
+    repository: grafana/grafana
+    tag: 10.2.0
+    pullPolicy: IfNotPresent
+  adminUser: admin
+  adminPassword: admin
+  service:
+    nodePort: 30300
+
+otel:
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: 0.88.0
+    pullPolicy: IfNotPresent

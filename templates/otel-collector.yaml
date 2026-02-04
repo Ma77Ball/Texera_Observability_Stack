@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Release.Name }}-otel-collector
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+spec:
+  selector:
+    matchLabels:
+      {{- include "texera.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: otel-collector
+  template:
+    metadata:
+      labels:
+        {{- include "texera.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: otel-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: "{{ .Values.otel.image.repository }}:{{ .Values.otel.image.tag }}"
+          imagePullPolicy: {{ .Values.otel.image.pullPolicy }}
+          args:
+            - "--config=/conf/otel-collector-config.yaml"
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          resources:
+            limits:
+              memory: 1Gi 
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: otel-collector-config-vol
+              mountPath: /conf
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+      volumes:
+        - name: otel-collector-config-vol
+          configMap:
+            name: {{ .Release.Name }}-otel-collector-conf
+            items:
+              - key: otel-collector-config
+                path: otel-collector-config.yaml
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-otel-collector-conf
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+data:
+  otel-collector-config: |
+    receivers:
+      filelog:
+        include:
+          - /var/log/pods/*/*/*.log
+        exclude:
+          - /var/log/pods/texera-dev_texera-otel-collector-*/*/*.log
+          - /var/log/pods/*_*otel-collector*_*/*/*.log
+        start_at: end
+        include_file_path: true
+        include_file_name: false
+        operators:
+          # Parse the Docker/CRI JSON log line
+          - type: json_parser
+            id: parser-docker
+            timestamp:
+              parse_from: attributes.time
+              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          
+          # Move the parsed 'log' field to the body
+          - type: move
+            from: attributes.log
+            to: body
+            
+          # Extract metadata from file path
+          - type: regex_parser
+            id: extract_metadata_from_filepath
+            regex: '/var/log/pods/(?P<namespace>[^/]+)_(?P<pod_name>[^/]+)_(?P<uid>[^/]+)/(?P<container_name>[^/]+)/'
+            parse_from: attributes["log.file.path"]
+          # Rename captured groups to standard k8s names (keeping them in attributes)
+          - type: move
+            from: attributes.namespace
+            to: attributes["k8s.namespace.name"]
+          - type: move
+            from: attributes.pod_name
+            to: attributes["k8s.pod.name"]
+          - type: move
+            from: attributes.container_name
+            to: attributes["k8s.container.name"]
+          - type: move
+            from: attributes.uid
+            to: attributes["k8s.pod.uid"]
+
+    processors:
+      filter:
+        error_mode: ignore
+        logs:
+          log_record:
+            - 'attributes["k8s.container.name"] == "otel-collector"'
+            - 'attributes["k8s.container.name"] == "loki"'
+            - 'attributes["k8s.container.name"] == "grafana"'
+
+      # Use the 'attributes' processor to add the 'loki.attribute.labels' hint.
+      # This tells the Loki exporter which attributes to promote to labels.
+      attributes:
+        actions:
+          - key: loki.attribute.labels
+            action: insert
+            value: "k8s.namespace.name, k8s.pod.name, k8s.container.name"
+      
+      batch:
+
+    exporters:
+      loki:
+        endpoint: "http://{{ .Release.Name }}-loki:3100/loki/api/v1/push"
+      debug:
+        verbosity: detailed
+
+    service:
+      telemetry:
+        logs:
+          level: info
+      pipelines:
+        logs:
+          receivers: [filelog]
+          processors: [filter, attributes, batch]
+          exporters: [loki, debug]

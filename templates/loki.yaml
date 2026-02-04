@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-loki
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: loki
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "texera.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: loki
+  template:
+    metadata:
+      labels:
+        {{- include "texera.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: loki
+    spec:
+      containers:
+        - name: loki
+          image: "{{ .Values.loki.image.repository }}:{{ .Values.loki.image.tag }}"
+          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          args:
+            - "-config.file=/etc/loki/local-config.yaml"
+          ports:
+            - name: http-metrics
+              containerPort: 3100
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http-metrics
+            initialDelaySeconds: 45
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: http-metrics
+            initialDelaySeconds: 45
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki
+            - name: storage
+              mountPath: /data
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-loki
+        - name: storage
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-loki
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: loki
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+      name: http-metrics
+  selector:
+    {{- include "texera.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: loki
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-loki
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: loki
+data:
+  local-config.yaml: |
+    auth_enabled: false
+    server:
+      http_listen_port: 3100
+    common:
+      path_prefix: /data/loki
+      storage:
+        filesystem:
+          chunks_directory: /data/loki/chunks
+          rules_directory: /data/loki/rules
+      replication_factor: 1
+      ring:
+        kvstore:
+          store: inmemory
+    schema_config:
+      configs:
+        - from: 2020-10-24
+          store: boltdb-shipper
+          object_store: filesystem
+          schema: v11
+          index:
+            prefix: index_
+            period: 24h
+    limits_config:
+      ingestion_rate_mb: 20
+      ingestion_burst_size_mb: 30
+      max_global_streams_per_user: 5000

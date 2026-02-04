@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-grafana
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "texera.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: grafana
+  template:
+    metadata:
+      labels:
+        {{- include "texera.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: "{{ .Values.grafana.image.repository }}:{{ .Values.grafana.image.tag }}"
+          imagePullPolicy: {{ .Values.grafana.image.pullPolicy }}
+          ports:
+            - name: service
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: {{ .Values.grafana.adminUser }}
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: {{ .Values.grafana.adminPassword }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/grafana/provisioning/datasources/datasource.yml
+              subPath: datasource.yml
+            - name: dashboards
+              mountPath: /etc/grafana/provisioning/dashboards/provider.yaml
+              subPath: provider.yaml
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards/texera-logs.json
+              subPath: texera-logs.json
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-grafana-datasource
+        - name: dashboards
+          configMap:
+            name: {{ .Release.Name }}-grafana-dashboards
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-grafana
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  type: NodePort
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+      name: service
+      nodePort: {{ .Values.grafana.service.nodePort }}
+  selector:
+    {{- include "texera.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-grafana-datasource
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+data:
+  datasource.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://{{ .Release.Name }}-loki:3100
+        version: 1
+        editable: false
+        isDefault: true

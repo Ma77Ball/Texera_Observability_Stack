@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-otel-collector
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-otel-collector
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - namespaces
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["apps"]
+    resources:
+      - replicasets
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-otel-collector
+  labels:
+    {{- include "texera.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-otel-collector
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-otel-collector
+  apiGroup: rbac.authorization.k8s.io
